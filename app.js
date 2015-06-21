@@ -17,6 +17,7 @@ var Hydraprint = function (deviceData) {
     this.ourPort = undefined;
     this.ok = true;
     this.commands = [];
+    this.input = undefined; //input stream
 
     devices = monitor.list();
     devices.forEach(function(device) {
@@ -32,8 +33,10 @@ var Hydraprint = function (deviceData) {
     });
 
     setInterval(function(){
-	console.log(that.commands.length, that.ok, that.ourPort !== undefined);
 	if(that.ok && that.commands.length > 0 && that.ourPort !== undefined){
+	    if(that.commands.length < 1000 && that.input !== undefined){
+		that.input.resume();
+	    }
 	    var aboutToSend = that.commands.shift().split(';')[0] + '\n';
 	    if(aboutToSend.length > 2) {
 		console.log("about to send", aboutToSend);
@@ -121,13 +124,13 @@ Hydraprint.prototype.streamFile = function(filepath) {
     var line = [];
     var lineCount = 0;
     var byteCount = 0;
-    var input = fs.createReadStream(filepath);
+    that.input = fs.createReadStream(filepath);
     var commands = [];
-    input.on('open', function(fd) {
+    that.input.on('open', function(fd) {
         console.log('file is open');
     })
     .on('data', function(data) {
-	input.pause();
+	that.input.pause();
 	for (var i = 0; i < data.length; i++) {
 	    byteCount++;
 	    if (0 <= newlines.indexOf(data[i])) { // Newline char was found.
