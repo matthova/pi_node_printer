@@ -10,7 +10,9 @@
   "license": "ISC",
   "dependencies": {
     "node-usb-detection": "^1.0.2",
+    "readline": "0.0.8",
     "serialport": "^1.7.4",
+    "stream": "0.0.2",
     "usb-detection": "^1.1.0"
   }
 }

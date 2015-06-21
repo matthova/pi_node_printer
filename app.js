@@ -1,6 +1,11 @@
-var monitor = require('node-usb-detection');
-var serialport = require('serialport');
-var child_process = require('child_process');
+var monitor = require('node-usb-detection'),
+serialport = require('serialport'),
+child_process = require('child_process'),
+fs = require('fs'),
+readline = require('readline'),
+stream = require('stream'),
+util = require('util'),
+newlines = [13, 10];
 
 var Hydraprint = function (deviceData) {
     var that = this;
@@ -98,4 +103,54 @@ Hydraprint.prototype.cleanup = function() {
     });
 };
 
+Hydraprint.prototype.streamFile = function(filepath) {
+    var that = this;
+    var opts = {};
+    var line = [];
+    var lineCount = 0;
+    var byteCount = 0;
+    var input = fs.createReadStream(filepath);
+    var commands = [];
+    input.on('open', function(fd) {
+        console.log('file is open');
+    })
+    .on('data', function(data) {
+	input.pause();
+	for (var i = 0; i < data.length; i++) {
+	    byteCount++;
+	    if (0 <= newlines.indexOf(data[i])) { // Newline char was found.
+		lineCount++;
+		commands.push(String.fromCharCode.apply(String, line));
+                //console.log("line!", String.fromCharCode.apply(String, line));
+		line = []; // Empty buffer.
+	    } else {
+		line.push(data[i]); // Buffer new line data.
+            }
+	}
+	for (var i = 0; i < commands.length; i++) {
+	    setTimeout(function(){
+		if(that.ourPort){
+		    that.ourPort.write(data[i]);
+		}
+	    },10*i);
+	    //console.log(commands[i]);
+	}
+    })
+    .on('error', function(err) {
+	console.log("error!", err);
+    })
+    .on('end', function() {
+        if (line.length){
+	    lineCount++;
+	}
+        console.log("end");
+    })
+    .on('close', function() {
+	console.log("closing");
+    });
+};
+
 var printer = new Hydraprint();
+setTimeout(function(){
+    printer.streamFile('../FirstCube.g');
+},5000);
