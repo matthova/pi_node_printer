@@ -15,6 +15,8 @@ var Hydraprint = function (deviceData) {
     this.PORT_NAME = '/dev/ttyACM';
     this.OPEN_TIMEOUT = 1000; // milliseconds
     this.ourPort = undefined;
+    this.ok = true;
+    this.commands = [];
 
     devices = monitor.list();
     devices.forEach(function(device) {
@@ -28,6 +30,18 @@ var Hydraprint = function (deviceData) {
     monitor.remove(function(device) {
 	that.findOurPort(device);
     });
+
+    setInterval(function(){
+	console.log(that.commands.length, that.ok, that.ourPort !== undefined);
+	if(that.ok && that.commands.length > 0 && that.ourPort !== undefined){
+	    var aboutToSend = that.commands.shift().split(';')[0] + '\n';
+	    if(aboutToSend.length > 2) {
+		console.log("about to send", aboutToSend);
+		that.ourPort.write(aboutToSend);
+		that.ok = false;
+	    }
+	}
+    }, 100);
 }
 
 Hydraprint.prototype.findOurPort = function(device) {
@@ -76,12 +90,10 @@ Hydraprint.prototype.tryPort = function(portNumber) {
 		} else {
 		    that.ourPort.on('data', function(data) {
 			console.log('data received: ' + data);
+			if(data.toString().indexOf('ok') !== -1) {
+			    that.ok = true;
+			}
 		    });
-		    setTimeout(function() {
-			that.ourPort.write("M501\n", function(err, results) {
-			    
-			});
-		    }, that.OPEN_TIMEOUT);
 		}
 	    });
 	}
@@ -120,20 +132,11 @@ Hydraprint.prototype.streamFile = function(filepath) {
 	    byteCount++;
 	    if (0 <= newlines.indexOf(data[i])) { // Newline char was found.
 		lineCount++;
-		commands.push(String.fromCharCode.apply(String, line));
-                //console.log("line!", String.fromCharCode.apply(String, line));
-		line = []; // Empty buffer.
+		that.commands.push(String.fromCharCode.apply(String, line));
+		line = []; // Empty the buffer
 	    } else {
 		line.push(data[i]); // Buffer new line data.
             }
-	}
-	for (var i = 0; i < commands.length; i++) {
-	    setTimeout(function(){
-		if(that.ourPort){
-		    that.ourPort.write(data[i]);
-		}
-	    },10*i);
-	    //console.log(commands[i]);
 	}
     })
     .on('error', function(err) {
@@ -153,4 +156,4 @@ Hydraprint.prototype.streamFile = function(filepath) {
 var printer = new Hydraprint();
 setTimeout(function(){
     printer.streamFile('../FirstCube.g');
-},5000);
+},2000);
