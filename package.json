@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "node-usb-detection": "^1.0.2",
-    "serialport": "^1.7.4"
+    "serialport": "^1.7.4",
+    "usb-detection": "^1.1.0"
   }
 }
