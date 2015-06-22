@@ -4,12 +4,7 @@ child_process = require('child_process'),
 fs = require('fs'),
 LineByLineReader = require('line-by-line');
 
-var printer = new Hydraprint();
-setTimeout(function(){
-    printer.streamFile('../giant_gcode/file0002.gcode');
-},2000);
-
-var Hydraprint = function (deviceData) {
+var GcodeClient = function (deviceData) {
     this.VID = 0x16c0; // USB Vendor ID
     this.PID = 0x0483; // USB Product ID
     this.BAUDRATE = 230400;
@@ -21,7 +16,8 @@ var Hydraprint = function (deviceData) {
     this.startDeviceDetection();
 }
 
-Hydraprint.prototype.startDeviceDetection = function() {
+GcodeClient.prototype.startDeviceDetection = function() {
+    var that = this;
     devices = monitor.list();
     devices.forEach(function(device) {
 	that.findOurPort(device);
@@ -34,9 +30,9 @@ Hydraprint.prototype.startDeviceDetection = function() {
     monitor.remove(function(device) {
 	that.findOurPort(device);
     });
-}
+};
 
-Hydraprint.prototype.findOurPort = function(device) {
+GcodeClient.prototype.findOurPort = function(device) {
     var that = this;
     if (
 	Number(device.deviceDescriptor.idVendor) === that.VID
@@ -49,12 +45,12 @@ Hydraprint.prototype.findOurPort = function(device) {
     }
 };
 
-Hydraprint.prototype.getPort = function (portNumber) {
+GcodeClient.prototype.getPort = function (portNumber) {
     code = child_process.execSync('ls ' + this.PORT_NAME + portNumber).toString().split("\n")[0];
     return code;
 };
 
-Hydraprint.prototype.openOrClose = function() {
+GcodeClient.prototype.openOrClose = function() {
     var portNumber = 0;
     var that = this;
     if(that.ourPort === undefined) {
@@ -67,7 +63,7 @@ Hydraprint.prototype.openOrClose = function() {
     }
 };
 
-Hydraprint.prototype.open = function(portNumber) {
+GcodeClient.prototype.open = function(portNumber) {
     var that = this;
     try {
 	if(that.getPort(portNumber) === that.PORT_NAME + portNumber) {
@@ -81,7 +77,6 @@ Hydraprint.prototype.open = function(portNumber) {
 		    console.log('failed to open: ' + error);
 		} else {
 		    that.ourPort.on('data', function(data) {
-			//console.log('data received: ' + data);
 			if(data.toString().indexOf('ok') !== -1) {
 			    if(that.lr !== undefined && that.ourPort !== undefined){
 				that.lr.resume();
@@ -98,9 +93,9 @@ Hydraprint.prototype.open = function(portNumber) {
 	}
 	console.log("No port available at", that.PORT_NAME + portNumber);
     }
-}
+};
 
-Hydraprint.prototype.cleanup = function() {
+GcodeClient.prototype.cleanup = function() {
     var that = this;
     process.on('exit', function() {
 	if(that.ourPort) {
@@ -109,7 +104,7 @@ Hydraprint.prototype.cleanup = function() {
     });
 };
 
-Hydraprint.prototype.streamFile = function(filepath) {
+GcodeClient.prototype.streamFile = function(filepath) {
     var that = this;
     that.lr = new LineByLineReader(filepath);
 
@@ -127,7 +122,7 @@ Hydraprint.prototype.streamFile = function(filepath) {
     });
 };
 
-Hydraprint.prototype.sendCommand = function(inCommand) {
+GcodeClient.prototype.sendCommand = function(inCommand) {
     var that = this;
     if(that.ourPort !== undefined){
 	var aboutToSend = inCommand.split(';')[0] + '\n';
@@ -136,3 +131,5 @@ Hydraprint.prototype.sendCommand = function(inCommand) {
 	}
     }    
 };
+
+module.exports = GcodeClient;
