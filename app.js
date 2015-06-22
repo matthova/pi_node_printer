@@ -2,23 +2,26 @@ var monitor = require('node-usb-detection'),
 serialport = require('serialport'),
 child_process = require('child_process'),
 fs = require('fs'),
-readline = require('readline'),
-stream = require('stream'),
-util = require('util'),
-newlines = [13, 10];
+LineByLineReader = require('line-by-line');
+
+var printer = new Hydraprint();
+setTimeout(function(){
+    printer.streamFile('../giant_gcode/file0002.gcode');
+},2000);
 
 var Hydraprint = function (deviceData) {
-    var that = this;
-    this.VID = 0x16c0;
-    this.PID = 0x0483;
+    this.VID = 0x16c0; // USB Vendor ID
+    this.PID = 0x0483; // USB Product ID
     this.BAUDRATE = 230400;
     this.PORT_NAME = '/dev/ttyACM';
-    this.OPEN_TIMEOUT = 1000; // milliseconds
-    this.ourPort = undefined;
-    this.ok = true;
-    this.commands = [];
-    this.input = undefined; //input stream
+    this.OPEN_TIMEOUT = 1000; // Time to wait after usb detection event before opening
+    this.ourPort = undefined; // A serialport instance
+    this.lr = undefined; //line reader
 
+    this.startDeviceDetection();
+}
+
+Hydraprint.prototype.startDeviceDetection = function() {
     devices = monitor.list();
     devices.forEach(function(device) {
 	that.findOurPort(device);
@@ -31,20 +34,6 @@ var Hydraprint = function (deviceData) {
     monitor.remove(function(device) {
 	that.findOurPort(device);
     });
-
-    setInterval(function(){
-	if(that.ok && that.commands.length > 0 && that.ourPort !== undefined){
-	    if(that.commands.length < 1000 && that.input !== undefined){
-		that.input.resume();
-	    }
-	    var aboutToSend = that.commands.shift().split(';')[0] + '\n';
-	    if(aboutToSend.length > 2) {
-		console.log("about to send", aboutToSend);
-		that.ourPort.write(aboutToSend);
-		that.ok = false;
-	    }
-	}
-    }, 100);
 }
 
 Hydraprint.prototype.findOurPort = function(device) {
@@ -55,7 +44,7 @@ Hydraprint.prototype.findOurPort = function(device) {
 	Number(device.deviceDescriptor.idProduct) === that.PID
     ) {
 	setTimeout(function() {
-	    that.open();
+	    that.openOrClose();
 	}, that.OPEN_TIMEOUT);
     }
 };
@@ -65,11 +54,11 @@ Hydraprint.prototype.getPort = function (portNumber) {
     return code;
 };
 
-Hydraprint.prototype.open = function() {
+Hydraprint.prototype.openOrClose = function() {
     var portNumber = 0;
     var that = this;
     if(that.ourPort === undefined) {
-	that.tryPort(portNumber);
+	that.open(portNumber);
     } else {
 	that.ourPort.close(function() {
 	    console.log("port closed");
@@ -78,7 +67,7 @@ Hydraprint.prototype.open = function() {
     }
 };
 
-Hydraprint.prototype.tryPort = function(portNumber) {
+Hydraprint.prototype.open = function(portNumber) {
     var that = this;
     try {
 	if(that.getPort(portNumber) === that.PORT_NAME + portNumber) {
@@ -92,9 +81,11 @@ Hydraprint.prototype.tryPort = function(portNumber) {
 		    console.log('failed to open: ' + error);
 		} else {
 		    that.ourPort.on('data', function(data) {
-			console.log('data received: ' + data);
+			//console.log('data received: ' + data);
 			if(data.toString().indexOf('ok') !== -1) {
-			    that.ok = true;
+			    if(that.lr !== undefined && that.ourPort !== undefined){
+				that.lr.resume();
+			    }
 			}
 		    });
 		}
@@ -120,43 +111,28 @@ Hydraprint.prototype.cleanup = function() {
 
 Hydraprint.prototype.streamFile = function(filepath) {
     var that = this;
-    var opts = {};
-    var line = [];
-    var lineCount = 0;
-    var byteCount = 0;
-    that.input = fs.createReadStream(filepath);
-    var commands = [];
-    that.input.on('open', function(fd) {
-        console.log('file is open');
-    })
-    .on('data', function(data) {
-	that.input.pause();
-	for (var i = 0; i < data.length; i++) {
-	    byteCount++;
-	    if (0 <= newlines.indexOf(data[i])) { // Newline char was found.
-		lineCount++;
-		that.commands.push(String.fromCharCode.apply(String, line));
-		line = []; // Empty the buffer
-	    } else {
-		line.push(data[i]); // Buffer new line data.
-            }
-	}
-    })
-    .on('error', function(err) {
-	console.log("error!", err);
-    })
-    .on('end', function() {
-        if (line.length){
-	    lineCount++;
-	}
-        console.log("end");
-    })
-    .on('close', function() {
-	console.log("closing");
+    that.lr = new LineByLineReader(filepath);
+
+    that.lr.on('error', function (err) {
+	console.log('line reader error:', err);
+    });
+
+    that.lr.on('line', function (line) {
+	that.sendCommand(line);
+	that.lr.pause();
+    });
+
+    that.lr.on('end', function () {
+	console.log("All lines are read, file", filepath, "is closed now.");
     });
 };
 
-var printer = new Hydraprint();
-setTimeout(function(){
-    printer.streamFile('../FirstCube.g');
-},2000);
+Hydraprint.prototype.sendCommand = function(inCommand) {
+    var that = this;
+    if(that.ourPort !== undefined){
+	var aboutToSend = inCommand.split(';')[0] + '\n';
+	if(aboutToSend.length > 0) {
+	    that.ourPort.write(aboutToSend);
+	}
+    }    
+};
